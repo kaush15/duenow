@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DueNow — Invoicing &amp; Collections</title>
+
+  <!-- Fonts: Instrument Sans, Newsreader, IBM Plex Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Favicon (SVG inline data URI) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230F5C4D'/%3E%3Cpath d='M8 10h10a6 6 0 0 1 0 12H8V10z' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='8' y1='22' x2='24' y2='22' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Design System -->
+  <link rel="stylesheet" href="assets/style.css?v=3.1">
+</head>
+<body>
+
+  <!-- Mobile backdrop -->
+  <div id="sidebar-backdrop" onclick="closeMobileSidebar()" aria-hidden="true"></div>
+
+  <!-- ===================================================================
+       LEFT SIDEBAR NAVIGATION
+       =================================================================== -->
+  <aside id="app-sidebar" role="navigation" aria-label="Main navigation">
+
+    <!-- Brand -->
+    <div class="sidebar-brand">
+      <!-- Typographic mark: "D" with ledger line -->
+      <svg class="sidebar-brand-mark" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect width="28" height="28" rx="5" fill="currentColor" opacity="0.1"/>
+        <path d="M7 8h8a5 5 0 0 1 0 10H7V8z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>
+        <line x1="7" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="sidebar-brand-name">DueNow</span>
+    </div>
+
+    <!-- Nav items -->
+    <nav class="sidebar-nav">
+
+      <!-- Overview -->
+      <div>
+        <div class="sidebar-section-label">Overview</div>
+        <div class="sidebar-section-items">
+          <button id="nav-dashboard" onclick="switchTab('dashboard')" class="sidebar-nav-item active" aria-current="page">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="9" rx="1"/>
+              <rect x="14" y="3" width="7" height="5" rx="1"/>
+              <rect x="14" y="12" width="7" height="9" rx="1"/>
+              <rect x="3" y="16" width="7" height="5" rx="1"/>
+            </svg>
+            <span>Dashboard</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Invoicing -->
+      <div>
+        <div class="sidebar-section-label">Invoicing</div>
+        <div class="sidebar-section-items">
+          <button id="nav-smart-create" onclick="switchTab('smart-create')" class="sidebar-nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="11" x2="12" y2="17"/>
+              <line x1="9" y1="14" x2="15" y2="14"/>
+            </svg>
+            <span>New invoice</span>
+          </button>
+
+          <button id="nav-invoices" onclick="switchTab('invoices')" class="sidebar-nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" x2="8" y1="13" y2="13"/>
+              <line x1="16" x2="8" y1="17" y2="17"/>
+            </svg>
+            <span>Invoices</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Collections -->
+      <div>
+        <div class="sidebar-section-label">Collections</div>
+        <div class="sidebar-section-items">
+          <button id="nav-queue" onclick="switchTab('queue')" class="sidebar-nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            <span>Reminders</span>
+            <span id="queue-count-badge" class="nav-count" aria-label="Pending reminders">0</span>
+          </button>
+
+          <button id="nav-clients" onclick="switchTab('clients')" class="sidebar-nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <span>Clients</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Activity -->
+      <div>
+        <div class="sidebar-section-label">Activity</div>
+        <div class="sidebar-section-items">
+          <button id="nav-logs" onclick="switchTab('logs')" class="sidebar-nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="15" y2="18"/>
+            </svg>
+            <span>Audit log</span>
+          </button>
+        </div>
+      </div>
+
+    </nav>
+
+    <!-- Footer -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-env">
+        <span id="header-paypal-badge">
+          <span class="conn-dot"></span>PayPal sandbox
+        </span>
+      </div>
+      <span id="footer-user-email" class="sidebar-footer-email" title="merchant@example.com">
+        merchant@example.com
+      </span>
+    </div>
+
+  </aside>
+
+  <!-- ===================================================================
+       MAIN AREA
+       =================================================================== -->
+  <div id="app-main">
+
+    <!-- Top bar -->
+    <header id="app-topbar" role="banner">
+      <div class="topbar-left">
+        <!-- Sidebar toggle -->
+        <button class="topbar-toggle" onclick="toggleSidebar()" id="btn-toggle-sidebar"
+                title="Toggle sidebar (Ctrl+B)" aria-label="Toggle sidebar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+        </button>
+
+        <!-- Breadcrumb -->
+        <nav class="topbar-breadcrumb" aria-label="Page location">
+          <span>DueNow</span>
+          <span class="topbar-breadcrumb-sep" aria-hidden="true">/</span>
+          <span id="header-breadcrumb" class="topbar-breadcrumb-current">Dashboard</span>
+        </nav>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Env / simulated date controls -->
+        <div class="topbar-env" role="group" aria-label="Test environment controls">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <span id="header-simulated-date" class="topbar-env-date mono" aria-live="polite">Loading…</span>
+          <span id="header-offset-badge" class="topbar-env-badge">Today</span>
+          <span class="topbar-env-sep" aria-hidden="true"></span>
+          <button onclick="fastForwardTime(7)" title="Fast-forward 7 days to test overdue scenarios">+7d</button>
+          <button onclick="resetTime()" title="Reset to today">Reset</button>
+          <button onclick="seedData()" title="Reset sample data" aria-label="Reload sample data">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M21 3v5h-5"/>
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              <path d="M3 21v-5h5"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Run autopilot -->
+        <button id="btn-run-autopilot" onclick="runAutopilotNow()" class="btn btn-primary"
+                title="Check overdue invoices and draft follow-up reminders">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          Run autopilot
+        </button>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main id="main-content" aria-live="polite">
+
+      <!-- =================================================================
+           TAB 1: DASHBOARD
+           ================================================================= -->
+      <section id="pane-dashboard" class="tab-pane" aria-label="Dashboard">
+
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-desc">Your receivables at a glance, with a 30-day cash flow estimate.</p>
+          </div>
+          <button onclick="switchTab('smart-create')" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New invoice
+          </button>
+        </div>
+
+        <!-- Summary strip — 4 figures, vertical hairlines -->
+        <div class="summary-strip" role="list" aria-label="Financial summary">
+          <div class="summary-strip-item" role="listitem">
+            <div class="summary-label">Outstanding</div>
+            <div id="stat-outstanding" class="summary-value" aria-label="Total outstanding">$0.00</div>
+          </div>
+          <div class="summary-strip-item" role="listitem">
+            <div class="summary-label">Overdue</div>
+            <div id="stat-overdue" class="summary-value overdue" aria-label="Total overdue">$0.00</div>
+          </div>
+          <div class="summary-strip-item" role="listitem">
+            <div class="summary-label">Collected</div>
+            <div id="stat-collected" class="summary-value paid" aria-label="Total collected">$0.00</div>
+          </div>
+          <div class="summary-strip-item" role="listitem">
+            <div class="summary-label">Avg. days to pay</div>
+            <div id="stat-avg-days" class="summary-value" aria-label="Average days to pay">0 days</div>
+          </div>
+        </div>
+
+        <!-- Two-column: chart + attention list -->
+        <div class="two-col" style="margin-top: 20px;">
+
+          <!-- Cash flow chart -->
+          <div class="panel chart-panel">
+            <div class="chart-header">
+              <div>
+                <div class="section-title">Cash flow — collected vs expected</div>
+                <div class="text-muted text-xs" style="margin-top:2px;">What you've received versus what's still expected</div>
+              </div>
+              <div class="chart-legend" aria-hidden="true">
+                <span class="chart-legend-item">
+                  <span class="chart-legend-dot" style="background: var(--color-accent)"></span>
+                  Collected
+                </span>
+                <span class="chart-legend-item">
+                  <span class="chart-legend-dot" style="background: var(--color-border-2)"></span>
+                  Expected
+                </span>
+              </div>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="cashflow-chart" aria-label="Cash flow chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Right column: forecast + needs attention -->
+          <div style="display:flex; flex-direction:column; gap:16px;">
+
+            <!-- Forecast note -->
+            <div class="forecast-note" id="dashboard-ai-insight" aria-label="30-day forecast">
+              <div class="forecast-label">30-day estimate</div>
+              <div id="insight-projected-amt" class="forecast-amount">$0.00</div>
+              <p id="insight-summary-text" class="forecast-summary">
+                Analyzing upcoming payments and client payment habits…
+              </p>
+              <details class="forecast-disclosure">
+                <summary style="cursor:pointer; user-select:none;">How this is calculated</summary>
+                <p style="margin-top:6px; line-height:1.6;">Based on each client's historical payment delay, applied to their open invoice due dates. Clients who habitually pay late are discounted accordingly. This is an estimate, not a guarantee.</p>
+              </details>
+            </div>
+
+            <!-- Needs attention -->
+            <div class="panel" style="padding: 20px 24px; flex:1;" aria-label="Overdue invoices needing attention">
+              <div class="section-header">
+                <div class="section-title">Needs attention</div>
+                <span id="insight-confidence-badge" class="text-xs text-muted"></span>
+              </div>
+              <ul id="dashboard-attention-list" class="attention-list" aria-label="Overdue invoices">
+                <li class="empty-state" style="padding: 24px 0;">
+                  <div class="text-muted text-sm">No overdue invoices. Nice work.</div>
+                </li>
+              </ul>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- =================================================================
+           TAB 2: SMART CREATE (Invoice Composer)
+           ================================================================= -->
+      <section id="pane-smart-create" class="tab-pane hidden" aria-label="New invoice">
+
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">New invoice</h1>
+            <p class="page-desc">Describe the work in plain words — DueNow structures it for you.</p>
+          </div>
+        </div>
+
+        <div class="smart-create-layout">
+
+          <!-- Left: input -->
+          <div>
+            <div class="panel" style="padding: 24px;">
+
+              <!-- Example prompts -->
+              <div style="margin-bottom: 16px;">
+                <div class="text-xs text-muted" style="margin-bottom:8px; font-weight:500;">Try an example:</div>
+                <div class="prompt-presets">
+                  <button class="preset-link" onclick="usePromptPreset('Invoice Apex Cloud for 40 hours backend cloud engineering at $120/hr, due in 14 days')">
+                    Apex Cloud — 40 hrs @ $120/hr
+                  </button>
+                  <button class="preset-link" onclick="usePromptPreset('Bill Nexa Creative Labs $2,500 for brand identity package, due next Friday')">
+                    Nexa Creative — $2,500 brand package
+                  </button>
+                  <button class="preset-link" onclick="usePromptPreset('Acme Design Co - 3 mobile mockups at $300 each with rush turnaround')">
+                    Acme Design — 3 screens @ $300
+                  </button>
+                </div>
+              </div>
+
+              <!-- Prompt textarea -->
+              <div style="margin-bottom:16px;">
+                <label class="form-label" for="smart-prompt-input">Describe the work or amount</label>
+                <textarea id="smart-prompt-input" class="form-control smart-textarea" rows="4"
+                  placeholder="e.g., Bill Apex Cloud for 25 hours website redesign at $110/hr and $200 setup fee, payment due in 14 days."
+                  aria-required="true"></textarea>
+              </div>
+
+              <!-- Clarification inline note (hidden by default) -->
+              <div id="clarification-box" class="clarification-note hidden" role="alert" aria-live="polite">
+                <div class="clar-label">One question before drafting</div>
+                <p id="clarification-question-text" style="margin-bottom:10px; font-size:14px;"></p>
+                <div class="clarification-inline-row">
+                  <input type="text" id="clarification-reply-input" class="form-control"
+                    placeholder="Your answer…" style="flex:1;"
+                    aria-label="Answer to clarification question">
+                  <button onclick="submitClarificationReply()" class="btn btn-secondary">Continue</button>
+                </div>
+              </div>
+
+              <!-- Bottom row: currency + submit -->
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <label class="form-label" for="smart-currency-select" style="margin:0;">Currency</label>
+                  <select id="smart-currency-select" class="form-control" style="width:auto;">
+                    <option value="USD">USD — US Dollar</option>
+                    <option value="EUR">EUR — Euro</option>
+                    <option value="GBP">GBP — British Pound</option>
+                    <option value="CAD">CAD — Canadian Dollar</option>
+                    <option value="AUD">AUD — Australian Dollar</option>
+                    <option value="JPY">JPY — Japanese Yen</option>
+                  </select>
+                </div>
+                <button id="btn-extract-draft" onclick="extractSmartDraft()" class="btn btn-primary btn-lg">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Draft invoice
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Right: invoice preview -->
+          <div>
+            <div id="draft-preview-section" class="hidden">
+              <!-- Invoice "paper" document -->
+              <div class="invoice-preview">
+
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:32px;">
+                  <div>
+                    <div class="invoice-preview-heading">Invoice</div>
+                    <div id="draft-inv-number-display" class="invoice-number-display">#—</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div class="text-xs text-muted" style="margin-bottom:4px;">Total due</div>
+                    <div id="draft-calculated-total" class="mono" style="font-size:22px; font-weight:600; color:var(--color-ink);">$0.00</div>
+                  </div>
+                </div>
+
+                <div class="invoice-parties">
+                  <div>
+                    <div class="invoice-party-label">From</div>
+                    <div class="invoice-party-value">Your business</div>
+                    <div class="text-xs text-muted" id="footer-user-email-inv">merchant@example.com</div>
+                  </div>
+                  <div>
+                    <div class="invoice-party-label">Bill to</div>
+                    <div class="invoice-party-value">
+                      <input type="text" id="draft-client-name" class="editable-field" placeholder="Client name" aria-label="Client name">
+                    </div>
+                    <div>
+                      <input type="email" id="draft-client-email" class="editable-field text-xs text-muted" placeholder="email@client.com" aria-label="Client email">
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px;">
+                  <div>
+                    <div class="invoice-party-label">Due date</div>
+                    <input type="date" id="draft-due-date" class="form-control" style="margin-top:4px;" aria-label="Due date">
+                  </div>
+                  <div>
+                    <div class="invoice-party-label">Currency</div>
+                    <input type="text" id="draft-currency" class="form-control" style="margin-top:4px;" readonly aria-label="Currency">
+                  </div>
+                </div>
+
+                <!-- Line items -->
+                <div class="data-table-wrap">
+                  <table class="line-items-table" aria-label="Invoice line items">
+                    <thead>
+                      <tr>
+                        <th>Description</th>
+                        <th style="text-align:center; width:90px;">Qty</th>
+                        <th class="text-right" style="width:110px;">Rate</th>
+                        <th class="text-right" style="width:110px;">Amount</th>
+                        <th style="width:36px;"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="draft-line-items-body">
+                      <!-- Dynamic -->
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colspan="3" style="text-align:right; color:var(--color-ink-2); font-size:12px; font-weight:500;">Total</td>
+                        <td class="text-right mono" id="draft-total-row">$0.00</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div style="margin-top:12px; text-align:right;">
+                  <button onclick="addLineItem()" class="btn btn-ghost btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19"/>
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Add line item
+                  </button>
+                </div>
+
+                <hr class="divider">
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+                  <div>
+                    <label class="form-label" for="draft-note">Note to client</label>
+                    <input type="text" id="draft-note" class="form-control" placeholder="Thank you for your business.">
+                  </div>
+                  <div>
+                    <label class="form-label" for="draft-terms">Payment terms</label>
+                    <input type="text" id="draft-terms" class="form-control" placeholder="Due upon receipt.">
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div style="display:flex; justify-content:flex-end; gap:8px;">
+                  <button id="btn-save-draft" onclick="submitInvoice(false)" class="btn btn-secondary">
+                    Save as draft
+                  </button>
+                  <button id="btn-create-and-send" onclick="submitInvoice(true)" class="btn btn-primary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                      <line x1="22" y1="2" x2="11" y2="13"/>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                    Send via PayPal
+                  </button>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Pre-draft placeholder -->
+            <div id="draft-placeholder" class="panel" style="padding:40px 24px; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:320px; text-align:center;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-border-2)" stroke-width="1.5" aria-hidden="true" style="margin-bottom:12px;">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <div class="text-muted text-sm">The invoice preview will appear here once you draft it.</div>
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+
+      <!-- =================================================================
+           TAB 3: COLLECTIONS QUEUE (Reminders)
+           ================================================================= -->
+      <section id="pane-queue" class="tab-pane hidden" aria-label="Reminders queue">
+
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Reminders</h1>
+            <p class="page-desc">Review drafted follow-up emails before they go to clients. Adjust the tone or edit freely.</p>
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
+            <input type="checkbox" id="auto-approve-toggle" onchange="toggleAutoApprove()"
+              aria-label="Automatically send friendly reminders">
+            <span style="color:var(--color-ink-2);">Auto-send friendly reminders</span>
+          </label>
+        </div>
+
+        <!-- Mail review layout: list + pane -->
+        <div class="queue-layout" id="queue-layout">
+          <!-- Left list -->
+          <div class="queue-list" id="queue-list-panel">
+            <div class="queue-list-header">Queue</div>
+            <div id="queue-list-items">
+              <!-- Dynamic -->
+            </div>
+          </div>
+          <!-- Right detail pane -->
+          <div class="queue-pane" id="queue-detail-pane">
+            <div class="empty-state" id="queue-empty-state">
+              <div class="empty-state-title">No reminders in queue</div>
+              <p class="empty-state-desc">All invoices are up to date, or reminders have already been sent. Use "+7d" above to simulate overdue invoices.</p>
+              <button onclick="fastForwardTime(7)" class="btn btn-secondary">Simulate +7 days</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cards container (hidden, kept for JS compat) -->
+        <div id="queue-cards-container" style="display:none;" aria-hidden="true"></div>
+
+      </section>
+
+      <!-- =================================================================
+           TAB 4: INVOICES TABLE
+           ================================================================= -->
+      <section id="pane-invoices" class="tab-pane hidden" aria-label="Invoices">
+
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Invoices</h1>
+            <p class="page-desc">All invoices, sortable and filterable. Click a row to send a reminder or record payment.</p>
+          </div>
+          <button onclick="switchTab('smart-create')" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New invoice
+          </button>
+        </div>
+
+        <!-- Filter row -->
+        <div class="filter-row" style="margin-bottom:16px;">
+          <div class="filter-tabs" role="tablist" aria-label="Filter invoices by status">
+            <button id="inv-filter-all"      onclick="filterInvoices('all')"     class="inv-filter-btn active" role="tab" aria-selected="true">All</button>
+            <button id="inv-filter-sent"     onclick="filterInvoices('SENT')"    class="inv-filter-btn" role="tab" aria-selected="false">Sent</button>
+            <button id="inv-filter-overdue"  onclick="filterInvoices('OVERDUE')" class="inv-filter-btn" role="tab" aria-selected="false">Overdue</button>
+            <button id="inv-filter-paid"     onclick="filterInvoices('PAID')"    class="inv-filter-btn" role="tab" aria-selected="false">Paid</button>
+            <button id="inv-filter-draft"    onclick="filterInvoices('DRAFT')"   class="inv-filter-btn" role="tab" aria-selected="false">Drafts</button>
+          </div>
+
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="search" class="form-control" oninput="handleInvoiceSearch(this.value)"
+              placeholder="Search by client or invoice #"
+              aria-label="Search invoices">
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="panel">
+          <div class="data-table-wrap">
+            <table class="data-table" aria-label="Invoices">
+              <thead>
+                <tr>
+                  <th scope="col">Invoice</th>
+                  <th scope="col">Client</th>
+                  <th scope="col" class="col-num" style="text-align:right;">Amount</th>
+                  <th scope="col">Due</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Score</th>
+                  <th scope="col" style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="invoices-table-body">
+                <!-- Dynamic -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- =================================================================
+           TAB 5: CLIENTS
+           ================================================================= -->
+      <section id="pane-clients" class="tab-pane hidden" aria-label="Clients">
+
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Clients</h1>
+            <p class="page-desc">Reliability scores and payment habits for each client, based on historical invoice data.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="data-table-wrap">
+            <table class="data-table" aria-label="Clients">
+              <thead>
+                <tr>
+                  <th scope="col">Client</th>
+                  <th scope="col">Reliability score</th>
+                  <th scope="col">Payment speed</th>
+                  <th scope="col" class="col-num">Total billed</th>
+                  <th scope="col" class="col-num">Total paid</th>
+                  <th scope="col" style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="clients-table-body">
+                <!-- Dynamic -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Hidden cards grid kept for JS compat — JS will switch to table rendering -->
+        <div id="clients-grid" style="display:none;" aria-hidden="true"></div>
+
+      </section>
+
+      <!-- =================================================================
+           TAB 6: AUDIT LOG
+           ================================================================= -->
+      <section id="pane-logs" class="tab-pane hidden" aria-label="Audit log">
+
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Audit log</h1>
+            <p class="page-desc">Timestamped record of invoices created, reminders sent, and payments confirmed.</p>
+          </div>
+          <button onclick="loadLogs()" class="btn btn-secondary" aria-label="Refresh audit log">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M21 3v5h-5"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+
+        <div class="panel" style="overflow:hidden;">
+          <div id="logs-container" class="log-list" role="log" aria-live="polite" aria-label="Activity log">
+            <!-- Dynamic -->
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ===================================================================
+       MODALS
+       =================================================================== -->
+
+  <!-- Invoice created success -->
+  <div id="invoice-success-modal" class="modal-backdrop hidden" onclick="if (event.target === this) closeInvoiceSuccessModal()" role="dialog" aria-modal="true" aria-labelledby="success-modal-title">
+    <div class="modal-dialog" style="max-width:420px;">
+      <div class="modal-header">
+        <div>
+          <h2 id="success-modal-title" class="modal-title">Invoice created</h2>
+          <div class="text-xs text-muted" style="margin-top:2px;">Ready for payment in PayPal sandbox</div>
+        </div>
+        <button class="modal-close" onclick="closeInvoiceSuccessModal()" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="inv-detail-list">
+        <div class="inv-detail-row">
+          <span class="inv-detail-label">Invoice number</span>
+          <span id="modal-inv-number" class="inv-detail-value"></span>
+        </div>
+        <div class="inv-detail-row">
+          <span class="inv-detail-label">Client</span>
+          <span id="modal-inv-client" class="inv-detail-value" style="font-family:var(--font-ui);"></span>
+        </div>
+        <div class="inv-detail-row">
+          <span class="inv-detail-label">Amount due</span>
+          <span id="modal-inv-amount" class="inv-detail-value" style="color:var(--status-paid-color);"></span>
+        </div>
+        <div class="inv-detail-row">
+          <span class="inv-detail-label">PayPal invoice ID</span>
+          <span id="modal-inv-paypal-id" class="inv-detail-value"></span>
+        </div>
+        <div class="inv-detail-row">
+          <span class="inv-detail-label">Status</span>
+          <span id="modal-inv-status" class="inv-detail-value"></span>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="flex-direction:column; gap:8px;">
+        <a id="modal-payer-view-btn" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="width:100%; justify-content:center;">
+          View invoice as client (PayPal sandbox)
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+        </a>
+        <button onclick="closeInvoiceSuccessModal()" class="btn btn-secondary" style="width:100%; justify-content:center;">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom reminder modal -->
+  <div id="custom-remind-modal" class="modal-backdrop hidden" onclick="if (event.target === this) closeCustomRemindModal()" role="dialog" aria-modal="true" aria-labelledby="remind-modal-title">
+    <div class="modal-dialog" style="max-width:520px;">
+      <div class="modal-header">
+        <div>
+          <h2 id="remind-modal-title" class="modal-title">Send reminder</h2>
+          <div class="text-xs text-muted" style="margin-top:2px;">Review and edit before sending via PayPal</div>
+        </div>
+        <button class="modal-close" onclick="closeCustomRemindModal()" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div>
+          <label class="form-label" for="modal-remind-tone">Tone</label>
+          <select id="modal-remind-tone" class="form-control" onchange="onToneChangeInModal()">
+            <option value="friendly">Friendly — gentle courtesy nudge</option>
+            <option value="firm">Firm — past-due notice</option>
+            <option value="final">Final — urgent follow-up</option>
+          </select>
+        </div>
+
+        <div class="reasoning-box">
+          <div class="reasoning-label">Why this reminder</div>
+          <p id="modal-remind-reason" class="reasoning-text">Drafting suggestion…</p>
+        </div>
+
+        <div>
+          <label class="form-label" for="modal-remind-subj">Subject line</label>
+          <input type="text" id="modal-remind-subj" class="form-control" placeholder="Subject">
+        </div>
+
+        <div>
+          <label class="form-label" for="modal-remind-msg">Message</label>
+          <textarea id="modal-remind-msg" rows="5" class="form-control" style="resize:vertical;" placeholder="Email body…"></textarea>
+        </div>
+        <div class="ai-disclosure">Drafted by AI — review before sending.</div>
+      </div>
+
+      <div class="modal-footer">
+        <button onclick="closeCustomRemindModal()" class="btn btn-secondary">Cancel</button>
+        <button onclick="sendCustomModalReminder()" class="btn btn-primary">Send via PayPal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       COMMAND PALETTE (Ctrl/Cmd+K)
+       =================================================================== -->
+  <div id="cmd-palette-backdrop" class="hidden" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmd-palette">
+      <div class="cmd-input-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input id="cmd-input" type="text" placeholder="Go to page, create invoice, run autopilot…" autocomplete="off" aria-label="Command search">
+      </div>
+      <div class="cmd-results" id="cmd-results" role="listbox">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="cmd-footer">
+        <span><kbd>↑↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> select</span>
+        <span><kbd>Esc</kbd> close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container (bottom-left) -->
+  <div id="toast-container" aria-live="polite" aria-label="Notifications" role="status"></div>
+
+  <!-- JS Bundle -->
+  <script src="assets/app.js?v=3.1"></script>
+</body>
+</html>
