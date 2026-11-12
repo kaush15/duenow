@@ -39,6 +39,7 @@ async def paypal_polling_background_task():
                 db: Session = SessionLocal()
                 try:
                     open_invoices = db.query(Invoice).filter(
+                        Invoice.is_demo == False,
                         Invoice.status.in_(["SENT", "SCHEDULED"]),
                         Invoice.paypal_invoice_id.isnot(None)
                     ).all()

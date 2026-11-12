@@ -22,7 +22,7 @@ class Settings:
     # LLM
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini").lower()
     LLM_API_KEY: str = (os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip().strip('"').strip("'")
-    LLM_MODEL: str = os.getenv("LLM_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-1.5-flash"
+    LLM_MODEL: str = os.getenv("LLM_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-3.5-flash"
 
     # App
     APP_BASE_URL: str = os.getenv("APP_BASE_URL", "http://localhost:8000")

@@ -30,11 +30,11 @@ class LLMAdapter:
     def __init__(self):
         self.provider = settings.LLM_PROVIDER
         self.api_key = (settings.LLM_API_KEY or "").strip()
-        self.model = settings.LLM_MODEL or "gemini-1.5-flash"
+        self.model = settings.LLM_MODEL or "gemini-3.5-flash"
 
     async def _call_gemini(self, prompt: str, system_instruction: str = "") -> str:
-        """Calls Google Gemini Generative Language REST API."""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        """Calls Google Gemini Generative Language REST API with fallback models."""
+        candidate_models = list(dict.fromkeys([self.model, "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"]))
         
         headers = {
             "Content-Type": "application/json",
@@ -58,21 +58,26 @@ class LLMAdapter:
                 "parts": [{"text": system_instruction}]
             }
 
+        last_resp = None
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            if resp.status_code != 200:
-                raise Exception(f"Gemini API returned status {resp.status_code}: {resp.text}")
-            
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                raise Exception(f"Gemini API returned no candidates: {data}")
-            
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if not parts:
-                raise Exception("Gemini API candidate has no parts")
-            
-            return parts[0].get("text", "")
+            for model_name in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                resp = await client.post(url, json=payload, headers=headers)
+                last_resp = resp
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            return parts[0].get("text", "")
+                elif resp.status_code not in [404, 503]:
+                    # For auth or bad request errors (400, 401, 403), stop retrying
+                    break
+
+            if last_resp is not None and last_resp.status_code != 200:
+                raise Exception(f"Gemini API returned status {last_resp.status_code}: {last_resp.text}")
+            raise Exception("Gemini API candidate has no parts")
 
     async def _call_openai(self, prompt: str, system_instruction: str = "") -> str:
         """Calls OpenAI Chat Completion REST API."""
