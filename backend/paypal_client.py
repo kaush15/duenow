@@ -2,6 +2,7 @@ import time
 import base64
 import logging
 from typing import Dict, Any, Optional, List
+from urllib.parse import urlparse
 import httpx
 from backend.config import settings
 
@@ -174,20 +175,37 @@ class PayPalClient:
 
         res = await self._request("POST", "/v2/invoicing/invoices", json_data=payload)
         
-        # Extract invoice ID and links
-        invoice_id = res.get("id")
-        links = res.get("links", [])
-        view_url = None
-        for l in links:
-            if l.get("rel") in ["payer-view", "self"]:
-                if l.get("rel") == "payer-view":
-                    view_url = l.get("href")
-        
-        if not view_url and invoice_id:
-            view_url = f"https://www.sandbox.paypal.com/invoice/p/#{invoice_id}"
+        # 1. Extract invoice ID: prefer res.get("id"), otherwise parse from href or self link
+        invoice_id = None
+        if isinstance(res, dict):
+            if res.get("id"):
+                invoice_id = str(res["id"])
+            else:
+                href = res.get("href")
+                if not href and isinstance(res.get("links"), list):
+                    for lnk in res["links"]:
+                        if isinstance(lnk, dict) and lnk.get("rel") == "self" and lnk.get("href"):
+                            href = lnk["href"]
+                            break
+                if href:
+                    parsed_path = urlparse(href).path
+                    segments = [s for s in parsed_path.split("/") if s]
+                    if segments:
+                        invoice_id = segments[-1]
 
-        res["view_url"] = view_url
-        return res
+        if not invoice_id:
+            raise PayPalAPIError(
+                "Failed to extract PayPal invoice ID from create response. "
+                "Missing 'id', 'href', or 'self' link.",
+                status_code=500,
+                details=res
+            )
+
+        # 2. GET /v2/invoicing/invoices/{id} to retrieve full details and real view URL
+        invoice_data = await self.get_invoice(invoice_id)
+        if not invoice_data.get("id"):
+            invoice_data["id"] = invoice_id
+        return invoice_data
 
     async def send_invoice(self, paypal_invoice_id: str, subject: Optional[str] = None, note: Optional[str] = None) -> Dict[str, Any]:
         """POST /v2/invoicing/invoices/{id}/send"""
@@ -215,14 +233,24 @@ class PayPalClient:
         """GET /v2/invoicing/invoices/{id}"""
         res = await self._request("GET", f"/v2/invoicing/invoices/{paypal_invoice_id}")
         
-        # Check payer view link
-        links = res.get("links", [])
-        view_url = None
-        for l in links:
-            if l.get("rel") == "payer-view":
-                view_url = l.get("href")
-        if not view_url:
-            view_url = f"https://www.sandbox.paypal.com/invoice/p/#{paypal_invoice_id}"
+        # Read recipient_view_url from detail.metadata (real PayPal field)
+        detail = res.get("detail") if isinstance(res.get("detail"), dict) else {}
+        metadata = detail.get("metadata") if isinstance(detail.get("metadata"), dict) else {}
+
+        view_url = metadata.get("recipient_view_url")
+        invoicer_view_url = metadata.get("invoicer_view_url")
+
+        if invoicer_view_url:
+            res["invoicer_view_url"] = invoicer_view_url
+
+        # Fallback: payer-view in links list
+        if not view_url and isinstance(res.get("links"), list):
+            for lnk in res["links"]:
+                if isinstance(lnk, dict) and lnk.get("rel") == "payer-view" and lnk.get("href"):
+                    view_url = lnk["href"]
+                    break
+
+        res["id"] = res.get("id") or paypal_invoice_id
         res["view_url"] = view_url
         return res
 

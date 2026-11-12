@@ -14,6 +14,7 @@ from backend.database import engine, Base, SessionLocal, run_migrations
 from backend.models import Invoice, Client
 from backend.paypal_client import paypal_client
 from backend.demo_seed import seed_demo_data
+from backend.scoring import calculate_client_score
 
 from backend.routes.smart_create import router as smart_create_router
 from backend.routes.invoices import router as invoices_router
@@ -46,12 +47,41 @@ async def paypal_polling_background_task():
                         try:
                             pp_data = await paypal_client.get_invoice(inv.paypal_invoice_id)
                             pp_status = pp_data.get("status")
+
+                            # Refresh view_url from real response if available
+                            pp_view_url = pp_data.get("view_url")
+                            has_changes = False
+                            if pp_view_url and inv.view_url != pp_view_url:
+                                inv.view_url = pp_view_url
+                                has_changes = True
+
                             if pp_status and pp_status != inv.status:
                                 logger.info(f"Poller sync: invoice {inv.invoice_number} status updated {inv.status} -> {pp_status}")
                                 inv.status = pp_status
-                                if pp_status == "PAID" and not inv.paid_at:
-                                    inv.paid_at = datetime.datetime.utcnow()
+                                has_changes = True
+
+                                if pp_status in ["PAID", "MARKED_AS_PAID"] and not inv.paid_at:
+                                    # Try to read payment_date from payments.transactions
+                                    paid_dt = None
+                                    payments = pp_data.get("payments") if isinstance(pp_data.get("payments"), dict) else {}
+                                    transactions = payments.get("transactions") if isinstance(payments.get("transactions"), list) else []
+                                    if transactions and isinstance(transactions[-1], dict) and transactions[-1].get("payment_date"):
+                                        try:
+                                            paid_dt = datetime.datetime.fromisoformat(transactions[-1]["payment_date"].replace("Z", "+00:00"))
+                                        except Exception:
+                                            pass
+                                    inv.paid_at = paid_dt or datetime.datetime.utcnow()
                                     inv.add_timeline_event("PAYMENT_RECEIVED", "Status verified via PayPal 30s Poller")
+
+                                    if inv.client:
+                                        client_invoices = [i.to_dict() for i in inv.client.invoices]
+                                        new_score, lag_days, _ = calculate_client_score(client_invoices)
+                                        inv.client.reliability_score = new_score
+                                        inv.client.predicted_pay_days = lag_days
+                                elif pp_status == "CANCELLED":
+                                    inv.add_timeline_event("INVOICE_CANCELLED", "Status verified via PayPal 30s Poller")
+
+                            if has_changes:
                                 db.commit()
                         except Exception as e:
                             # Ignore transient errors during poll

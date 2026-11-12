@@ -148,6 +148,13 @@ async def create_invoice(req: InvoiceCreateRequest, db: Session = Depends(get_db
         try:
             await paypal_client.send_invoice(paypal_invoice_id, subject=f"Invoice {invoice_number} from DueNow Merchant")
             status = "SENT"
+            # Re-fetch to get the payer view URL, which is only reliable after the invoice is sent
+            try:
+                refreshed = await paypal_client.get_invoice(paypal_invoice_id)
+                if refreshed.get("view_url"):
+                    view_url = refreshed.get("view_url")
+            except Exception as e:
+                logger.warning(f"Failed to refresh view_url after sending invoice {paypal_invoice_id}: {e}")
         except PayPalAPIError as e:
             logger.error(f"PayPal send call failed ({e.status_code}): {e.message}")
             status_code = 400 if (e.status_code and 400 <= e.status_code < 500) else 502
@@ -241,6 +248,14 @@ async def send_existing_invoice(invoice_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"PayPal send call error: {e}")
         raise HTTPException(status_code=502, detail=f"Failed to communicate with PayPal: {str(e)}")
+
+    # Re-fetch to refresh view_url in DB (payer link is only reliable once invoice is sent)
+    try:
+        refreshed = await paypal_client.get_invoice(inv.paypal_invoice_id)
+        if refreshed.get("view_url"):
+            inv.view_url = refreshed.get("view_url")
+    except Exception as e:
+        logger.warning(f"Failed to refresh view_url for invoice {inv.paypal_invoice_id} after send: {e}")
 
     inv.status = "SENT"
     inv.add_timeline_event("INVOICE_SENT", f"Sent to {inv.client_email} via PayPal Sandbox")

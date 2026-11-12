@@ -1,6 +1,7 @@
 import datetime
 import logging
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
 from fastapi import APIRouter, Request, Header, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -47,6 +48,18 @@ async def handle_paypal_webhook(
     event_type = body.get("event_type")
     resource = body.get("resource", {}) if isinstance(body.get("resource"), dict) else {}
     paypal_id = resource.get("id")
+    # Fallback: parse ID from href or self link if "id" not present
+    if not paypal_id:
+        href = resource.get("href")
+        if not href and isinstance(resource.get("links"), list):
+            for lnk in resource["links"]:
+                if isinstance(lnk, dict) and lnk.get("rel") == "self" and lnk.get("href"):
+                    href = lnk["href"]
+                    break
+        if href:
+            segments = [s for s in urlparse(href).path.split("/") if s]
+            if segments:
+                paypal_id = segments[-1]
 
     logger.info(f"Received PayPal Webhook: event_type={event_type}, paypal_id={paypal_id}")
 
@@ -105,10 +118,11 @@ async def handle_paypal_webhook(
         raise HTTPException(status_code=400, detail=f"Webhook verification failed: {reject_reason or 'verification failed'}")
 
     # Locate invoice in DB
-    invoice = db.query(Invoice).filter(Invoice.paypal_invoice_id == paypal_id).first()
+    invoice = db.query(Invoice).filter(Invoice.paypal_invoice_id == paypal_id).first() if paypal_id else None
     if not invoice:
-        # Fallback check by invoice number
-        inv_num = resource.get("detail", {}).get("invoice_number")
+        # Fallback check by invoice number (detail may be nested dict or missing)
+        detail_dict = resource.get("detail") if isinstance(resource.get("detail"), dict) else {}
+        inv_num = detail_dict.get("invoice_number")
         if inv_num:
             invoice = db.query(Invoice).filter(Invoice.invoice_number == inv_num).first()
 
@@ -116,10 +130,36 @@ async def handle_paypal_webhook(
         logger.warning(f"No matching invoice found for webhook paypal_id: {paypal_id}")
         return {"status": "ignored", "reason": "invoice_not_found"}
 
+    # Back-fill paypal_invoice_id if DB record was matched by invoice_number
+    if not invoice.paypal_invoice_id and paypal_id:
+        invoice.paypal_invoice_id = paypal_id
+
+    # Back-fill view_url from webhook resource if DB record is missing it
+    if not invoice.view_url:
+        detail_dict = resource.get("detail") if isinstance(resource.get("detail"), dict) else {}
+        metadata = detail_dict.get("metadata") if isinstance(detail_dict.get("metadata"), dict) else {}
+        recipient_view_url = metadata.get("recipient_view_url")
+        if not recipient_view_url and isinstance(resource.get("links"), list):
+            for lnk in resource["links"]:
+                if isinstance(lnk, dict) and lnk.get("rel") == "payer-view" and lnk.get("href"):
+                    recipient_view_url = lnk["href"]
+                    break
+        if recipient_view_url:
+            invoice.view_url = recipient_view_url
+
     # Process events
     if event_type == "INVOICING.INVOICE.PAID":
         invoice.status = "PAID"
-        invoice.paid_at = datetime.datetime.utcnow()
+        # Try to read payment_date from payments.transactions in the resource
+        paid_dt = None
+        payments = resource.get("payments") if isinstance(resource.get("payments"), dict) else {}
+        transactions = payments.get("transactions") if isinstance(payments.get("transactions"), list) else []
+        if transactions and isinstance(transactions[-1], dict) and transactions[-1].get("payment_date"):
+            try:
+                paid_dt = datetime.datetime.fromisoformat(transactions[-1]["payment_date"].replace("Z", "+00:00"))
+            except Exception:
+                pass
+        invoice.paid_at = paid_dt or datetime.datetime.utcnow()
         invoice.add_timeline_event("PAYMENT_RECEIVED", "Payment verified via PayPal Webhook")
         
         # Recalculate client score
