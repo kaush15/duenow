@@ -175,26 +175,6 @@ pytest
 
 ---
 
-## Pushing to GitHub safely
-
-To ensure secrets and private credentials are never accidentally exposed:
-1. Initialize git and check tracked files:
-   ```bash
-   git init
-   git add .
-   git status
-   ```
-2. Confirm that `.env` and `Basic Details.txt` are **not** listed in the untracked or staged files (both are protected by `.gitignore`).
-3. Commit and push via the command line:
-   ```bash
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin <your-github-repo-url>
-   git push -u origin main
-   ```
-> [!IMPORTANT]
-> Avoid uploading files via the GitHub web browser drag-and-drop interface, as the web uploader ignores `.gitignore` rules and can inadvertently publish confidential configuration files.
-
 ---
 
 ## Known Limitations
