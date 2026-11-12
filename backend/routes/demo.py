@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from backend.database import get_db
-from backend.models import AppSetting
-from backend.demo_seed import seed_demo_data, fast_forward_time
+from backend.models import AppSetting, Invoice, ApprovalQueueItem, Client, AuditLog
+from backend.demo_seed import seed_demo_data, fast_forward_time, DEMO_CLIENTS
 from backend.autopilot import get_simulated_today, get_app_setting, set_app_setting
 from backend.paypal_client import paypal_client
 from backend.config import settings
@@ -24,6 +24,33 @@ def seed_data(reset: bool = True, db: Session = Depends(get_db)):
     """Seeds realistic demo clients and invoices for live demonstration."""
     seed_demo_data(db, reset_existing=reset)
     return {"status": "success", "message": "Demo data successfully seeded."}
+
+@router.post("/clear")
+def clear_demo_data(db: Session = Depends(get_db)):
+    """Deletes only is_demo rows. Real invoices are never touched."""
+    demo_invoices = db.query(Invoice).filter(Invoice.is_demo == True).all()
+    count = len(demo_invoices)
+    if count > 0:
+        demo_ids = [inv.id for inv in demo_invoices]
+        db.query(ApprovalQueueItem).filter(ApprovalQueueItem.invoice_id.in_(demo_ids)).delete(synchronize_session=False)
+        db.query(Invoice).filter(Invoice.is_demo == True).delete(synchronize_session=False)
+
+        # Cleanup orphan demo clients without real invoices
+        demo_emails = [c["email"] for c in DEMO_CLIENTS]
+        orphan_clients = db.query(Client).filter(Client.email.in_(demo_emails)).all()
+        for cl in orphan_clients:
+            if not cl.invoices:
+                db.delete(cl)
+
+        db.add(AuditLog(
+            actor="user",
+            action="DEMO_DATA_CLEARED",
+            details=f"Cleared {count} demo invoice(s). Real invoices unaffected.",
+            target_id="demo"
+        ))
+        db.commit()
+
+    return {"status": "success", "message": f"Cleared {count} demo invoice(s).", "deleted_count": count}
 
 @router.post("/fast-forward")
 def fast_forward(days: int = 7, db: Session = Depends(get_db)):
@@ -62,7 +89,8 @@ def get_demo_status(db: Session = Depends(get_db)):
         "llm_model": settings.LLM_MODEL,
         "auto_approve_friendly": get_app_setting(db, "auto_approve_friendly", "false").lower() == "true",
         "preferred_language": get_app_setting(db, "preferred_language", "English"),
-        "default_currency": get_app_setting(db, "default_currency", "USD")
+        "default_currency": get_app_setting(db, "default_currency", "USD"),
+        "has_demo_data": db.query(Invoice).filter(Invoice.is_demo == True).count() > 0
     }
 
 @router.post("/settings")

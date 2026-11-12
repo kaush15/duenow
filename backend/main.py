@@ -146,6 +146,15 @@ app.include_router(demo_router)
 async def health_check():
     return {"status": "ok"}
 
+@app.get("/api/config", tags=["system"])
+async def get_system_config():
+    """Returns only public configuration. Never returns secrets."""
+    return {
+        "business_email": settings.PAYPAL_BUSINESS_EMAIL,
+        "paypal_mode": settings.PAYPAL_MODE,
+        "paypal_configured": paypal_client.is_configured
+    }
+
 # Mount Frontend Static Assets
 frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 

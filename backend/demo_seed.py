@@ -50,10 +50,16 @@ DEMO_CLIENTS = [
 def seed_demo_data(db: Session, reset_existing: bool = True):
     """Populates the database with realistic clients and invoices for demonstration."""
     if reset_existing:
-        db.query(ApprovalQueueItem).delete()
-        db.query(Invoice).delete()
-        db.query(Client).delete()
-        db.query(AuditLog).delete()
+        # Delete only is_demo rows so real invoices and real clients are never touched
+        demo_invoices = db.query(Invoice).filter(Invoice.is_demo == True).all()
+        if demo_invoices:
+            demo_ids = [inv.id for inv in demo_invoices]
+            db.query(ApprovalQueueItem).filter(ApprovalQueueItem.invoice_id.in_(demo_ids)).delete(synchronize_session=False)
+            db.query(Invoice).filter(Invoice.is_demo == True).delete(synchronize_session=False)
+        demo_emails = [c["email"] for c in DEMO_CLIENTS]
+        for cl in db.query(Client).filter(Client.email.in_(demo_emails)).all():
+            if not cl.invoices:
+                db.delete(cl)
         db.commit()
 
     # Reset simulated offset

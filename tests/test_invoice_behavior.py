@@ -1,3 +1,4 @@
+import datetime
 import pytest
 from unittest.mock import AsyncMock, patch, PropertyMock
 from fastapi import HTTPException
@@ -8,12 +9,15 @@ from backend.database import Base
 from backend.models import Invoice, Client
 from backend.schemas import InvoiceCreateRequest, LineItem, RemindRequest
 from backend.paypal_client import PayPalClient, PayPalAPIError
+from backend.main import get_system_config
 from backend.routes.invoices import (
     create_invoice,
     send_existing_invoice,
     cancel_invoice,
     remind_invoice,
+    get_dashboard_stats,
 )
+from backend.routes.demo import clear_demo_data
 
 @pytest.fixture
 def test_db():
@@ -186,4 +190,108 @@ async def test_create_and_send_refreshes_view_url(test_db):
         inv_in_db = test_db.query(Invoice).filter(Invoice.paypal_invoice_id == "INV2-PAYPAL-SENDNOW").first()
         assert inv_in_db is not None
         assert inv_in_db.view_url == "https://view.paypal.com/after-send-link"
+
+
+@pytest.mark.asyncio
+async def test_api_config_returns_only_safe_fields():
+    """GET /api/config returns only business_email, paypal_mode, paypal_configured and never secrets."""
+    config = await get_system_config()
+    assert set(config.keys()) == {"business_email", "paypal_mode", "paypal_configured"}
+    assert "client_secret" not in config
+    assert "client_id" not in config
+    assert config["paypal_mode"] == "sandbox"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_stats_returns_overdue_invoices_and_respects_demo_toggle(test_db):
+    """Needs attention list receives overdue invoices matching KPI total, and respects include_demo."""
+    real_inv = Invoice(
+        paypal_invoice_id="INV2-REAL-OVERDUE",
+        invoice_number="INV-2026-REAL-OD",
+        client_name="Real Client",
+        client_email="real@client.com",
+        currency="USD",
+        amount=1500.0,
+        status="SENT",
+        due_date="2026-11-01",
+        issue_date="2026-10-15",
+        is_demo=False
+    )
+    demo_inv = Invoice(
+        paypal_invoice_id="INV2-DEMO-OVERDUE",
+        invoice_number="INV-2026-DEMO-OD",
+        client_name="Demo Client",
+        client_email="demo@client.com",
+        currency="USD",
+        amount=6050.0,
+        status="SENT",
+        due_date="2026-11-05",
+        issue_date="2026-10-20",
+        is_demo=True
+    )
+    test_db.add_all([real_inv, demo_inv])
+    test_db.commit()
+
+    with patch("backend.routes.invoices.get_simulated_today", return_value=datetime.date(2026, 11, 12)), \
+         patch("backend.autopilot.autopilot_agent.generate_cashflow_insight", new_callable=AsyncMock) as mock_insight:
+        mock_insight.return_value = {"summary": "Healthy cashflow", "projected_30d": 7550.0, "confidence_level": "High"}
+
+        # 1. With include_demo=True (default)
+        stats_with_demo = await get_dashboard_stats(include_demo=True, db=test_db)
+        assert stats_with_demo["total_overdue"] == 7550.0
+        assert len(stats_with_demo["overdue_invoices"]) == 2
+        assert stats_with_demo["has_demo_data"] is True
+        assert stats_with_demo["demo_included"] is True
+        overdue_numbers = [inv["invoice_number"] for inv in stats_with_demo["overdue_invoices"]]
+        assert "INV-2026-REAL-OD" in overdue_numbers
+        assert "INV-2026-DEMO-OD" in overdue_numbers
+
+        # 2. With include_demo=False
+        stats_no_demo = await get_dashboard_stats(include_demo=False, db=test_db)
+        assert stats_no_demo["total_overdue"] == 1500.0
+        assert len(stats_no_demo["overdue_invoices"]) == 1
+        assert stats_no_demo["overdue_invoices"][0]["invoice_number"] == "INV-2026-REAL-OD"
+        assert stats_no_demo["has_demo_data"] is True
+        assert stats_no_demo["demo_included"] is False
+
+
+@pytest.mark.asyncio
+async def test_clear_demo_data_leaves_real_invoices_untouched(test_db):
+    """Clear demo data deletes only is_demo=True rows and preserves real invoices."""
+    real_inv = Invoice(
+        paypal_invoice_id="INV2-REAL-KEEP",
+        invoice_number="INV-2026-REAL-KEEP",
+        client_name="Real Client",
+        client_email="real@client.com",
+        currency="USD",
+        amount=2500.0,
+        status="SENT",
+        due_date="2026-11-20",
+        issue_date="2026-11-01",
+        is_demo=False
+    )
+    demo_inv = Invoice(
+        paypal_invoice_id="INV2-DEMO-DELETE",
+        invoice_number="INV-2026-DEMO-DEL",
+        client_name="Demo Client",
+        client_email="demo@client.com",
+        currency="USD",
+        amount=500.0,
+        status="SENT",
+        due_date="2026-11-10",
+        issue_date="2026-11-01",
+        is_demo=True
+    )
+    test_db.add_all([real_inv, demo_inv])
+    test_db.commit()
+
+    res = clear_demo_data(db=test_db)
+    assert res["status"] == "success"
+    assert res["deleted_count"] == 1
+
+    remaining_invoices = test_db.query(Invoice).all()
+    assert len(remaining_invoices) == 1
+    assert remaining_invoices[0].invoice_number == "INV-2026-REAL-KEEP"
+    assert remaining_invoices[0].is_demo is False
+
 

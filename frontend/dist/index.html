@@ -134,8 +134,8 @@
           <span class="conn-dot"></span>PayPal sandbox
         </span>
       </div>
-      <span id="footer-user-email" class="sidebar-footer-email" title="merchant@example.com">
-        merchant@example.com
+      <span id="footer-user-email" class="sidebar-footer-email" title="No merchant email configured">
+        —
       </span>
     </div>
 
@@ -180,12 +180,18 @@
           <span class="topbar-env-sep" aria-hidden="true"></span>
           <button onclick="fastForwardTime(7)" title="Fast-forward 7 days to test overdue scenarios">+7d</button>
           <button onclick="resetTime()" title="Reset to today">Reset</button>
-          <button onclick="seedData()" title="Reset sample data" aria-label="Reload sample data">
+          <button onclick="seedData()" title="Reload sample demo data" aria-label="Reload sample data">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
               <path d="M21 3v5h-5"/>
               <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
               <path d="M3 21v-5h5"/>
+            </svg>
+          </button>
+          <button onclick="clearDemoData()" title="Clear demo data (delete sample invoices)" aria-label="Clear demo data">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
           </button>
         </div>
@@ -211,19 +217,31 @@
 
         <div class="page-header">
           <div class="page-header-left">
-            <h1 class="page-title">Dashboard</h1>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <h1 class="page-title">Dashboard</h1>
+              <span id="dashboard-demo-badge" class="badge-demo" style="display:none;" title="Seeded demo invoices are included">Demo data</span>
+            </div>
             <p class="page-desc">Your receivables at a glance, with a 30-day cash flow estimate.</p>
           </div>
-          <button onclick="switchTab('smart-create')" class="btn btn-primary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New invoice
-          </button>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <label class="demo-toggle-label" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; color:var(--color-ink-2); user-select:none;">
+              <input type="checkbox" id="include-demo-toggle" checked onchange="toggleIncludeDemo(this.checked)">
+              <span>Include demo data</span>
+            </label>
+            <button onclick="switchTab('smart-create')" class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              New invoice
+            </button>
+          </div>
         </div>
 
         <!-- Summary strip — 4 figures, vertical hairlines -->
+        <div id="summary-demo-label" style="display:none; font-size:11px; color:#b45309; font-weight:500; margin-bottom:6px;">
+          <span class="badge-demo" style="margin-right:6px;">Demo data</span> Summary numbers reflect seeded demo invoices
+        </div>
         <div class="summary-strip" role="list" aria-label="Financial summary">
           <div class="summary-strip-item" role="listitem">
             <div class="summary-label">Outstanding</div>
@@ -402,8 +420,8 @@
                 <div class="invoice-parties">
                   <div>
                     <div class="invoice-party-label">From</div>
-                    <div class="invoice-party-value">Your business</div>
-                    <div class="text-xs text-muted" id="footer-user-email-inv">merchant@example.com</div>
+                    <div class="invoice-party-value" id="invoice-from-name">Your business</div>
+                    <div class="text-xs text-muted" id="footer-user-email-inv">—</div>
                   </div>
                   <div>
                     <div class="invoice-party-label">Bill to</div>

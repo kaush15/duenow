@@ -1,7 +1,7 @@
 import datetime
 import json
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -32,11 +32,14 @@ def compute_effective_status(inv: Invoice, today: datetime.date) -> str:
 def list_invoices(
     status: Optional[str] = None,
     search: Optional[str] = None,
+    include_demo: bool = True,
     db: Session = Depends(get_db)
 ):
     """Lists all invoices with simulated status calculations."""
     today = get_simulated_today(db)
     query = db.query(Invoice).order_by(Invoice.created_at.desc())
+    if not include_demo:
+        query = query.filter(Invoice.is_demo == False)
 
     invoices = query.all()
     results = []
@@ -385,28 +388,75 @@ async def record_payment(invoice_id: int, req: RecordPaymentRequest, db: Session
     db.commit()
     return inv.to_dict()
 
+def compute_chart_data(invoices: List[Invoice], today: datetime.date, include_demo: bool) -> List[Dict[str, Any]]:
+    """Generates 6-month collected vs expected chart data."""
+    if include_demo:
+        return [
+            {"period": "Jul 2026", "collected": 2400, "projected": 2400},
+            {"period": "Aug 2026", "collected": 4250, "projected": 4250},
+            {"period": "Sep 2026", "collected": 3200, "projected": 3200},
+            {"period": "Oct 2026", "collected": 5850, "projected": 5850},
+            {"period": "Nov 2026", "collected": 1600, "projected": 7550},
+            {"period": "Dec 2026", "collected": 0, "projected": 4800}
+        ]
+
+    # Dynamically compute chart data for real invoices only
+    periods = []
+    for offset in range(-4, 2):
+        m = today.month + offset
+        y = today.year
+        while m < 1:
+            m += 12
+            y -= 1
+        while m > 12:
+            m -= 12
+            y += 1
+        period_label = datetime.date(y, m, 1).strftime("%b %Y")
+
+        col = 0.0
+        exp = 0.0
+        for inv in invoices:
+            if inv.is_demo:
+                continue
+            if inv.status in ["PAID", "MARKED_AS_PAID"] and inv.paid_at:
+                p_dt = inv.paid_at.date() if isinstance(inv.paid_at, datetime.datetime) else datetime.datetime.fromisoformat(str(inv.paid_at)[:10]).date()
+                if p_dt.year == y and p_dt.month == m:
+                    col += inv.amount
+            elif inv.status in ["SENT", "SCHEDULED"]:
+                try:
+                    d_dt = datetime.datetime.strptime(inv.due_date[:10], "%Y-%m-%d").date()
+                    if d_dt.year == y and d_dt.month == m:
+                        exp += inv.amount
+                except Exception:
+                    pass
+
+        is_past = (y < today.year) or (y == today.year and m < today.month)
+        proj = col if is_past else (col + exp)
+        periods.append({"period": period_label, "collected": round(col, 2), "projected": round(proj, 2)})
+
+    return periods
+
 @router.get("/dashboard/stats")
-async def get_dashboard_stats(db: Session = Depends(get_db)):
+async def get_dashboard_stats(include_demo: bool = True, db: Session = Depends(get_db)):
     """KPI cards, cashflow projection chart, and AI Cashflow insight card."""
     today = get_simulated_today(db)
-    invoices = db.query(Invoice).all()
+    query = db.query(Invoice)
+    if not include_demo:
+        query = query.filter(Invoice.is_demo == False)
+    invoices = query.all()
+
+    total_demo_count = db.query(Invoice).filter(Invoice.is_demo == True).count()
+    has_demo_data = total_demo_count > 0
+    demo_included = bool(include_demo and has_demo_data)
 
     total_outstanding = 0.0
     total_collected = 0.0
     total_overdue = 0.0
     days_to_pay_list = []
-
-    # Chart monthly aggregations
-    chart_data = [
-        {"period": "Jul 2026", "collected": 2400, "projected": 2400},
-        {"period": "Aug 2026", "collected": 4250, "projected": 4250},
-        {"period": "Sep 2026", "collected": 3200, "projected": 3200},
-        {"period": "Oct 2026", "collected": 5850, "projected": 5850},
-        {"period": "Nov 2026", "collected": 1600, "projected": 7550},
-        {"period": "Dec 2026", "collected": 0, "projected": 4800}
-    ]
+    overdue_invoices = []
 
     for inv in invoices:
+        effective_st = compute_effective_status(inv, today)
         if inv.status in ["PAID", "MARKED_AS_PAID"]:
             total_collected += inv.amount
             if inv.issue_date and inv.paid_at:
@@ -421,14 +471,26 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
             try:
                 due_d = datetime.datetime.strptime(inv.due_date[:10], "%Y-%m-%d").date()
                 if today > due_d:
+                    diff = (today - due_d).days
                     total_overdue += inv.amount
+                    inv_dict = inv.to_dict()
+                    inv_dict["effective_status"] = "OVERDUE"
+                    inv_dict["days_overdue"] = diff
+                    inv_dict["days_until_due"] = 0
+                    overdue_invoices.append(inv_dict)
             except Exception:
                 pass
 
     avg_days_to_pay = round(sum(days_to_pay_list) / len(days_to_pay_list), 1) if days_to_pay_list else 12.0
 
+    # Sort overdue invoices: most overdue first
+    overdue_invoices.sort(key=lambda x: x.get("days_overdue", 0), reverse=True)
+
+    # Chart monthly aggregations
+    chart_data = compute_chart_data(invoices, today, include_demo=include_demo)
+
     # Generate AI cashflow insight
-    insight = await autopilot_agent.generate_cashflow_insight(db)
+    insight = await autopilot_agent.generate_cashflow_insight(db, include_demo=include_demo)
 
     return {
         "total_outstanding": total_outstanding,
@@ -437,5 +499,8 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         "avg_days_to_pay": avg_days_to_pay,
         "simulated_date": today.isoformat(),
         "chart_data": chart_data,
-        "cashflow_insight": insight
+        "cashflow_insight": insight,
+        "overdue_invoices": overdue_invoices,
+        "has_demo_data": has_demo_data,
+        "demo_included": demo_included
     }

@@ -285,10 +285,13 @@ class AutopilotAgent:
         }
 
     @staticmethod
-    async def generate_cashflow_insight(db: Session) -> Dict[str, Any]:
+    async def generate_cashflow_insight(db: Session, include_demo: bool = True) -> Dict[str, Any]:
         """Generates AI 2-3 sentence financial projection summary for the next 30 days."""
         today = get_simulated_today(db)
-        open_invoices = db.query(Invoice).filter(Invoice.status.in_(["SENT", "SCHEDULED"])).all()
+        query = db.query(Invoice).filter(Invoice.status.in_(["SENT", "SCHEDULED"]))
+        if not include_demo:
+            query = query.filter(Invoice.is_demo == False)
+        open_invoices = query.all()
         
         total_open = sum(inv.amount for inv in open_invoices)
         overdue_invoices = []
@@ -306,6 +309,14 @@ class AutopilotAgent:
 
         overdue_amt = sum(inv.amount for inv in overdue_invoices)
         upcoming_amt = sum(inv.amount for inv in upcoming_invoices)
+
+        if not open_invoices:
+            return {
+                "summary": "No open or overdue receivables. All invoices are currently settled.",
+                "projected_30d": 0.0,
+                "overdue_amount": 0.0,
+                "confidence_level": "High"
+            }
 
         prompt = (
             f"Simulated Today's Date: {today.isoformat()}\n"

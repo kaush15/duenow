@@ -14,9 +14,12 @@ logger = logging.getLogger("autopilot_route")
 router = APIRouter(prefix="/api/autopilot", tags=["autopilot"])
 
 @router.get("/queue")
-def get_approval_queue(db: Session = Depends(get_db)):
+def get_approval_queue(include_demo: bool = True, db: Session = Depends(get_db)):
     """Returns all pending proposals in the Autopilot approval queue."""
-    items = db.query(ApprovalQueueItem).filter(ApprovalQueueItem.status == "pending").order_by(ApprovalQueueItem.created_at.desc()).all()
+    query = db.query(ApprovalQueueItem).filter(ApprovalQueueItem.status == "pending")
+    if not include_demo:
+        query = query.join(Invoice).filter(Invoice.is_demo == False)
+    items = query.order_by(ApprovalQueueItem.created_at.desc()).all()
     results = []
     for item in items:
         it_dict = item.to_dict()

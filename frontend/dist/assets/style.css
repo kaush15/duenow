@@ -487,6 +487,19 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.badge-demo {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  line-height: 1.2;
+}
+
 .topbar-env-sep {
   width: 1px;
   height: 12px;

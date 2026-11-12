@@ -7,6 +7,8 @@ const state = {
   currentTab: "dashboard",
   simulatedDate: "",
   offsetDays: 0,
+  includeDemo: true,
+  config: null,
   demoStatus: null,
   dashboardStats: null,
   invoices: [],
@@ -169,6 +171,66 @@ function switchTab(tabName) {
 // API Calls & Data Loading
 // -------------------------------------------------------------
 
+async function fetchConfig() {
+  try {
+    const res = await fetch(`${API_BASE}/api/config`);
+    if (!res.ok) throw new Error("Config failed");
+    const data = await res.json();
+    state.config = data;
+
+    const email = data.business_email || "";
+    const emailDisplay = email || "—";
+
+    const sidebarEmail = document.getElementById("footer-user-email");
+    if (sidebarEmail) {
+      sidebarEmail.textContent = emailDisplay;
+      sidebarEmail.title = email ? `Merchant: ${email}` : "No merchant email configured";
+    }
+
+    const invFromEmail = document.getElementById("footer-user-email-inv");
+    if (invFromEmail) {
+      invFromEmail.textContent = emailDisplay;
+    }
+
+    const invFromName = document.getElementById("invoice-from-name");
+    if (invFromName) {
+      invFromName.textContent = email || "Your business";
+    }
+
+    const ppBadge = document.getElementById("header-paypal-badge");
+    if (ppBadge) {
+      if (data.paypal_configured) {
+        ppBadge.innerHTML = `<span class="conn-dot"></span>PayPal ${data.paypal_mode || "sandbox"}`;
+      } else {
+        ppBadge.innerHTML = `<span class="conn-dot" style="background:var(--status-sent-dot)"></span>PayPal offline`;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to fetch config:", err);
+  }
+}
+
+function toggleIncludeDemo(checked) {
+  state.includeDemo = Boolean(checked);
+  reloadAll();
+}
+
+async function clearDemoData() {
+  if (!confirm("Are you sure you want to delete all demo invoices? Real invoices will not be touched.")) {
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/demo/clear`, { method: "POST" });
+    if (!res.ok) throw new Error("Failed to clear demo data");
+    const data = await res.json();
+    showToast(data.message || `Cleared ${data.deleted_invoices} demo invoices.`, "info");
+    await fetchStatus();
+    await reloadAll();
+  } catch (e) {
+    showToast("Clear demo data failed: " + e.message, "error");
+  }
+}
+
 async function fetchStatus() {
   try {
     const res = await fetch(`${API_BASE}/api/demo/status`);
@@ -294,10 +356,24 @@ async function toggleAutoApprove() {
 
 async function loadDashboard() {
   try {
-    const res = await fetch(`${API_BASE}/api/invoices/dashboard/stats`);
+    const res = await fetch(`${API_BASE}/api/invoices/dashboard/stats?include_demo=${state.includeDemo}`);
     if (!res.ok) throw new Error("Dashboard API failed");
     const data = await res.json();
     state.dashboardStats = data;
+
+    // Demo data badges/labels
+    const demoBadge = document.getElementById("dashboard-demo-badge");
+    if (demoBadge) {
+      demoBadge.style.display = (state.includeDemo && data.has_demo_data) ? "inline-flex" : "none";
+    }
+    const demoLabel = document.getElementById("summary-demo-label");
+    if (demoLabel) {
+      demoLabel.style.display = (state.includeDemo && data.has_demo_data) ? "inline-block" : "none";
+    }
+    const demoToggle = document.getElementById("include-demo-toggle");
+    if (demoToggle) {
+      demoToggle.checked = state.includeDemo;
+    }
 
     // Summary strip
     document.getElementById("stat-outstanding").textContent = formatMoney(data.total_outstanding);
@@ -716,7 +792,7 @@ function closeInvoiceSuccessModal() {
 
 async function loadQueue() {
   try {
-    const res = await fetch(`${API_BASE}/api/autopilot/queue`);
+    const res = await fetch(`${API_BASE}/api/autopilot/queue?include_demo=${state.includeDemo}`);
     if (!res.ok) throw new Error("Failed to load queue");
     const queue = await res.json();
     state.queue = queue;
@@ -929,7 +1005,7 @@ async function handleQueueAction(queueId, action) {
 
 async function loadInvoices() {
   try {
-    const res = await fetch(`${API_BASE}/api/invoices`);
+    const res = await fetch(`${API_BASE}/api/invoices?include_demo=${state.includeDemo}`);
     if (!res.ok) throw new Error("Failed to load invoices");
     const invoices = await res.json();
     state.invoices = invoices;
@@ -1312,6 +1388,7 @@ async function sendCustomModalReminder() {
 // -------------------------------------------------------------
 
 async function reloadAll() {
+  await fetchConfig();
   await fetchStatus();
   if (state.currentTab === "dashboard") await loadDashboard();
   if (state.currentTab === "queue") await loadQueue();
@@ -1335,6 +1412,7 @@ const CMD_ITEMS = [
   { label: "Run autopilot",     keys: "",    action: () => runAutopilotNow() },
   { label: "Simulate +7 days",  keys: "",    action: () => fastForwardTime(7) },
   { label: "Reset to today",    keys: "",    action: () => resetTime() },
+  { label: "Clear demo data",   keys: "",    action: () => clearDemoData() },
   { label: "Reload sample data",keys: "",    action: () => seedData() },
 ];
 
@@ -1499,6 +1577,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Initial Boot
 document.addEventListener("DOMContentLoaded", async () => {
+  await fetchConfig();
   await fetchStatus();
   await loadDashboard();
   await loadQueue();
