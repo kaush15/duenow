@@ -1,0 +1,24 @@
+# Environment and secrets
+.env
+Basic Details.txt
+
+# Databases
+*.db
+*.sqlite
+
+# Python bytecode and caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS and Editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
