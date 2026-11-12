@@ -29,12 +29,17 @@ rate_limiter = LLMRateLimiter()
 class LLMAdapter:
     def __init__(self):
         self.provider = settings.LLM_PROVIDER
-        self.api_key = settings.LLM_API_KEY
-        self.model = settings.LLM_MODEL or "gemini-flash-latest"
+        self.api_key = (settings.LLM_API_KEY or "").strip()
+        self.model = settings.LLM_MODEL or "gemini-1.5-flash"
 
     async def _call_gemini(self, prompt: str, system_instruction: str = "") -> str:
         """Calls Google Gemini Generative Language REST API."""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key
+        }
         
         payload: Dict[str, Any] = {
             "contents": [
@@ -54,7 +59,7 @@ class LLMAdapter:
             }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+            resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code != 200:
                 raise Exception(f"Gemini API returned status {resp.status_code}: {resp.text}")
             
