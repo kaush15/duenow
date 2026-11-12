@@ -45,7 +45,7 @@ DueNow communicates directly with the **PayPal Invoicing API v2** and **Notifica
 
 ## How AI Is Used
 
-DueNow integrates with **Google Gemini** (`gemini-flash-latest`, with fallback compatibility for OpenAI `gpt-4o-mini`):
+DueNow integrates with **Google Gemini** (`gemini-3.5-flash-`, with automatic fallback to other Gemini Flash models):
 
 1. **Invoice Extraction**: Translates raw text (e.g., "designed 3 landing pages for Acme at 200 each, net 15") into structured line items, quantities, rates, and due dates.
 2. **Reminder Drafting**: Generates context-aware follow-up messages tailored to client score (friendly for reliable payers, firm for persistent delays).
@@ -93,8 +93,8 @@ flowchart TD
 ### Installation
 1. Clone the repository and navigate into the root directory:
    ```bash
-   git clone <repo-url>
-   cd DueNow
+   git clone https://github.com/kaush15/duenow.git
+   cd duenow
    ```
 2. Create and activate a virtual environment:
    ```bash
